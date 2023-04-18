@@ -50,7 +50,7 @@ app.get("/", async (req, res) => {
     if (tripData) {
       res.send(tripData);
     } else {
-      const Prompt = `Plan a ${DAYS}-day trip to ${DESTINATION}. I need result according to this schema ${SCHEMA} and please strictly follow this with no extra-text other than json.`;
+      const Prompt = `Plan a ${DAYS}-day trip to ${DESTINATION}. I need result according to this schema ${SCHEMA} and please strictly follow this with no extra-text other than json. Please don't put any extra gibberish characters.`;
       const headers = {
         Authorization: `Bearer ${API_KEY}`,
         "Content-Type": "application/json",
