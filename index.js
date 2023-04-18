@@ -32,6 +32,13 @@ app.get("/", async (req, res) => {
   const DAYS = req.query.days;
   const DESTINATION = req.query.destination;
 
+  if (!DAYS || !DESTINATION) {
+    return res.status(400).json({
+      error:
+        "Please provide values for 'days' and 'destination' query parameters.",
+    });
+  }
+
   const key = `${DAYS.toLowerCase()}-${DESTINATION.toLowerCase()}`;
 
   try {
