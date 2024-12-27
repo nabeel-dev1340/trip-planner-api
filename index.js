@@ -3,8 +3,21 @@ import bodyParser from "body-parser";
 import axios from "axios";
 import cors from "cors";
 import { MongoClient } from "mongodb";
-import { URL, MODEL, API_KEY, SCHEMA, PORT } from "./constants/index.js";
+import {
+  URL,
+  MODEL,
+  API_KEY,
+  SCHEMA,
+  PORT,
+  OUTPUT_SCHEMA,
+  BUDGET,
+  TRAVEL_MODE,
+  INTERESTS,
+} from "./constants/index.js";
 import removeUnwantedChars from "./helpers/removeUnwanted.js";
+import Ajv from "ajv";
+
+const ajv = new Ajv();
 
 // connecting to db
 const client = new MongoClient(URL, { useNewUrlParser: true });
@@ -27,6 +40,8 @@ app.use(
     credentials: false,
   })
 );
+// Validate output schema
+const validateOutput = ajv.compile(OUTPUT_SCHEMA);
 
 app.get("/", async (req, res) => {
   const DAYS = req.query.days;
@@ -81,6 +96,96 @@ app.get("/", async (req, res) => {
     }
   } catch (error) {
     throw error;
+  }
+});
+
+app.post("/detailed-plan", async (req, res) => {
+  const { days, destination, interests, budget, travelMode } = req.body;
+  console.log(req.body);
+
+  if (!days || !destination || !interests || !budget || !travelMode) {
+    return res.status(400).json({
+      error:
+        "Please provide values for 'days', 'destination', 'interests', 'budget', and 'travelMode' in the request body.",
+    });
+  }
+
+  if (
+    !Array.isArray(interests) ||
+    !interests.every((i) => INTERESTS.includes(i.toLowerCase()))
+  ) {
+    return res.status(400).json({ error: "Invalid interests provided." });
+  }
+
+  if (!BUDGET.includes(budget.toLowerCase())) {
+    return res.status(400).json({ error: "Invalid budget provided." });
+  }
+
+  if (!TRAVEL_MODE.includes(travelMode.toLowerCase())) {
+    return res.status(400).json({ error: "Invalid travel mode provided." });
+  }
+
+  const key = `${days}-${destination.toLowerCase()}-${interests.join(
+    ","
+  )}-${budget}-${travelMode.toLowerCase()}`;
+
+  try {
+    // checking if data already exists
+    const db = client.db("test");
+    const itineraries = db.collection("itineraries");
+    const itineraryData = await itineraries.findOne({ key });
+
+    if (itineraryData) {
+      res.send(itineraryData);
+    } else {
+      const Prompt = `Plan a ${days}-day trip to ${destination} for someone interested in ${interests.join(
+        ", "
+      )} with a budget of ${budget} and traveling by ${travelMode}. Please provide a detailed itinerary following this schema ${JSON.stringify(
+        OUTPUT_SCHEMA
+      )}. Ensure the response is strictly in JSON format with no extra text.`;
+      const headers = {
+        Authorization: `Bearer ${API_KEY}`,
+        "Content-Type": "application/json",
+      };
+
+      const data = {
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: Prompt }],
+        response_format: { type: "json_object" },
+      };
+
+      const response = await axios.post(
+        "https://api.openai.com/v1/chat/completions",
+        data,
+        { headers }
+      );
+
+      const cleanedRes = removeUnwantedChars(
+        response.data.choices[0].message.content
+      );
+      const itineraryPlan = JSON.parse(cleanedRes);
+
+      if (!validateOutput(itineraryPlan)) {
+        return res.status(500).json({
+          error:
+            "Generated itinerary does not comply with the expected schema.",
+          details: validateOutput.errors,
+        });
+      }
+
+      const obj = {};
+      obj.plan = itineraryPlan;
+      obj.key = key;
+
+      // inserting data into db
+      await itineraries.insertOne(obj);
+
+      console.log("Itinerary Logged.");
+      res.send(obj);
+    }
+  } catch (error) {
+    console.error("Error generating itinerary", error);
+    res.status(500).json({ error: "Failed to generate itinerary." });
   }
 });
 

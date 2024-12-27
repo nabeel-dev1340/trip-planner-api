@@ -1,1 +1,10 @@
-GET http://localhost:3030/?time=45&location=gym&equipment=dumbbells&muscle=biceps
+POST http://localhost:3030/detailed-plan HTTP/1.1
+Content-Type: application/json
+
+{
+  "days": 3,
+  "destination": "Islamabad",
+  "interests": ["fine dining", "cuisine"],
+  "budget": "medium",
+  "travelMode": "public transport"
+}
