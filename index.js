@@ -64,6 +64,7 @@ app.get("/", async (req, res) => {
     const data = {
       model: MODEL,
       messages: [{ role: "user", content: Prompt }],
+      response_format: { type: "json_object" },
     };
     const response = await axios.post(
       "https://api.openai.com/v1/chat/completions",
@@ -132,21 +133,21 @@ app.post("/detailed-plan", async (req, res) => {
       { headers }
     );
 
-    const cleanedRes = removeUnwantedChars(
-      response.data.choices[0].message.content
-    );
-    const itineraryPlan = JSON.parse(cleanedRes);
+    // const cleanedRes = removeUnwantedChars(
+    //   response.data.choices[0].message.content
+    // );
+    // const itineraryPlan = JSON.parse(cleanedRes);
 
-    if (!validateOutput(itineraryPlan)) {
-      return res.status(500).json({
-        error:
-          "Generated itinerary does not comply with the expected schema.",
-        details: validateOutput.errors,
-      });
-    }
+    // if (!validateOutput(itineraryPlan)) {
+    //   return res.status(500).json({
+    //     error:
+    //       "Generated itinerary does not comply with the expected schema.",
+    //     details: validateOutput.errors,
+    //   });
+    // }
 
     const obj = {};
-    obj.plan = itineraryPlan;
+    obj.plan = response.data.choices[0].message.content;
 
     console.log("Itinerary Logged.");
     res.send(obj);
