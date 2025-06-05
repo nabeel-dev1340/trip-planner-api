@@ -54,46 +54,31 @@ app.get("/", async (req, res) => {
     });
   }
 
-  const key = `${DAYS.toLowerCase()}-${DESTINATION.toLowerCase()}`;
-
   try {
-    // checking if data already exists
-    const db = client.db("test");
-    const trips = db.collection("trips");
-    const tripData = await trips.findOne({ key });
+    const Prompt = `Plan a ${DAYS}-day trip to ${DESTINATION}. I need result according to this schema ${SCHEMA} and please strictly follow this with no extra-text other than json. Please don't put any extra gibberish characters.`;
+    const headers = {
+      Authorization: `Bearer ${API_KEY}`,
+      "Content-Type": "application/json",
+    };
 
-    if (tripData) {
-      res.send(tripData);
-    } else {
-      const Prompt = `Plan a ${DAYS}-day trip to ${DESTINATION}. I need result according to this schema ${SCHEMA} and please strictly follow this with no extra-text other than json. Please don't put any extra gibberish characters.`;
-      const headers = {
-        Authorization: `Bearer ${API_KEY}`,
-        "Content-Type": "application/json",
-      };
+    const data = {
+      model: MODEL,
+      messages: [{ role: "user", content: Prompt }],
+    };
+    const response = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      data,
+      { headers }
+    );
+    const cleanedRes = removeUnwantedChars(
+      response.data.choices[0].message.content
+    );
+    const tripPlan = JSON.parse(cleanedRes);
+    const obj = {};
+    obj.plan = tripPlan;
 
-      const data = {
-        model: MODEL,
-        messages: [{ role: "user", content: Prompt }],
-      };
-      const response = await axios.post(
-        "https://api.openai.com/v1/chat/completions",
-        data,
-        { headers }
-      );
-      const cleanedRes = removeUnwantedChars(
-        response.data.choices[0].message.content
-      );
-      const tripPlan = JSON.parse(cleanedRes);
-      const obj = {};
-      obj.plan = tripPlan;
-
-      // inserting data into db
-      obj.key = `${key}`;
-      await trips.insertOne(obj);
-
-      console.log("Data Logged.");
-      res.send(obj);
-    }
+    console.log("Data Logged.");
+    res.send(obj);
   } catch (error) {
     throw error;
   }
@@ -101,7 +86,6 @@ app.get("/", async (req, res) => {
 
 app.post("/detailed-plan", async (req, res) => {
   const { days, destination, interests, budget, travelMode } = req.body;
-  console.log(req.body);
 
   if (!days || !destination || !interests || !budget || !travelMode) {
     return res.status(400).json({
@@ -125,64 +109,47 @@ app.post("/detailed-plan", async (req, res) => {
     return res.status(400).json({ error: "Invalid travel mode provided." });
   }
 
-  const key = `${days}-${destination.toLowerCase()}-${interests.join(
-    ","
-  )}-${budget}-${travelMode.toLowerCase()}`;
-
   try {
-    // checking if data already exists
-    const db = client.db("test");
-    const itineraries = db.collection("itineraries");
-    const itineraryData = await itineraries.findOne({ key });
+    const Prompt = `Plan a ${days}-day trip to ${destination} for someone interested in ${interests.join(
+      ", "
+    )} with a budget of ${budget} and traveling by ${travelMode}. Please provide a detailed itinerary following this schema ${JSON.stringify(
+      OUTPUT_SCHEMA
+    )}. Ensure the response is strictly in JSON format with no extra text.`;
+    const headers = {
+      Authorization: `Bearer ${API_KEY}`,
+      "Content-Type": "application/json",
+    };
 
-    if (itineraryData) {
-      res.send(itineraryData);
-    } else {
-      const Prompt = `Plan a ${days}-day trip to ${destination} for someone interested in ${interests.join(
-        ", "
-      )} with a budget of ${budget} and traveling by ${travelMode}. Please provide a detailed itinerary following this schema ${JSON.stringify(
-        OUTPUT_SCHEMA
-      )}. Ensure the response is strictly in JSON format with no extra text.`;
-      const headers = {
-        Authorization: `Bearer ${API_KEY}`,
-        "Content-Type": "application/json",
-      };
+    const data = {
+      model: "gpt-4o",
+      messages: [{ role: "user", content: Prompt }],
+      response_format: { type: "json_object" },
+    };
 
-      const data = {
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: Prompt }],
-        response_format: { type: "json_object" },
-      };
+    const response = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      data,
+      { headers }
+    );
 
-      const response = await axios.post(
-        "https://api.openai.com/v1/chat/completions",
-        data,
-        { headers }
-      );
+    const cleanedRes = removeUnwantedChars(
+      response.data.choices[0].message.content
+    );
+    const itineraryPlan = JSON.parse(cleanedRes);
 
-      const cleanedRes = removeUnwantedChars(
-        response.data.choices[0].message.content
-      );
-      const itineraryPlan = JSON.parse(cleanedRes);
-
-      if (!validateOutput(itineraryPlan)) {
-        return res.status(500).json({
-          error:
-            "Generated itinerary does not comply with the expected schema.",
-          details: validateOutput.errors,
-        });
-      }
-
-      const obj = {};
-      obj.plan = itineraryPlan;
-      obj.key = key;
-
-      // inserting data into db
-      await itineraries.insertOne(obj);
-
-      console.log("Itinerary Logged.");
-      res.send(obj);
+    if (!validateOutput(itineraryPlan)) {
+      return res.status(500).json({
+        error:
+          "Generated itinerary does not comply with the expected schema.",
+        details: validateOutput.errors,
+      });
     }
+
+    const obj = {};
+    obj.plan = itineraryPlan;
+
+    console.log("Itinerary Logged.");
+    res.send(obj);
   } catch (error) {
     console.error("Error generating itinerary", error);
     res.status(500).json({ error: "Failed to generate itinerary." });
